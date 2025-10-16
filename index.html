@@ -1,147 +1,366 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>YouTube 참여율 분석기</title>
-<style>
-  body { font-family: "맑은 고딕", sans-serif; background-color: #f7f7f7; padding: 30px; }
-  h1 { color: #222; margin-bottom: 10px; }
-  textarea, input { width: 100%; max-width: 400px; padding: 8px; margin-bottom: 10px; }
-  button { background-color: #007bff; color: white; border: none; padding: 8px 14px; cursor: pointer; border-radius: 5px; }
-  button:hover { background-color: #0056b3; }
-  table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; }
-  th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-  th { background-color: #007bff; color: white; }
-  img { width: 120px; height: auto; border-radius: 4px; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube 통합 분석기 (개인용)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#f7f7f7; font-family:"맑은 고딕",system-ui,sans-serif }
+    .btn { padding:.5rem .75rem; border:1px solid #e5e7eb; border-radius:.5rem; background:#fff }
+    .btn:hover { background:#f3f4f6 }
+    .btn-primary { background:#111827; color:#fff; border-color:#111827 }
+    .btn-primary:hover { background:#1f2937 }
+    .btn-active{ background:#111827!important; color:#fff!important; border-color:#111827!important }
+    .th { background:#0ea5e9; color:#fff; font-weight:700 }
+    .num{ font-variant-numeric: tabular-nums }
+    .skel{animation:pulse 1.4s ease-in-out infinite;background:linear-gradient(90deg,#f3f4f6,#e5e7eb,#f3f4f6);background-size:200% 100%}
+    @keyframes pulse {0%{background-position:200% 0}100%{background-position:-200% 0}}
+  </style>
 </head>
-<body>
+<body class="min-h-screen">
+  <div class="max-w-7xl mx-auto p-4 sm:p-6">
+    <header class="flex items-center gap-2 mb-4">
+      <span class="text-2xl">📊</span>
+      <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight">YouTube 통합 분석기</h1>
+      <span class="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded">개인용 · 자동 실행</span>
+    </header>
 
-<h1>📊 YouTube 참여율 분석기</h1>
+    <!-- 알림/에러 영역 -->
+    <div id="notice" class="hidden mb-4 p-3 rounded-md text-sm"></div>
 
-<label>키워드 (줄바꿈 구분):</label><br />
-<textarea id="keywords" rows="3" placeholder="예: 건강정보&#10;트럼프 관세"></textarea><br />
+    <!-- 입력/컨트롤 -->
+    <section class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 shadow-sm mb-5">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 mb-1">키워드 (줄바꿈으로 구분)</label>
+          <textarea id="keywords" rows="4" class="w-full rounded-lg border-gray-300 focus:ring-0"
+          >건강 정보
+트럼프 관세</textarea>
+          <p class="text-xs text-gray-500 mt-1">예: ‘건강 정보’, ‘트럼프 관세’ 등 줄바꿈으로 여러 개 입력</p>
+        </div>
 
-<label>기간(일):</label><br />
-<input type="number" id="days" value="7" /><br />
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">기간 선택</label>
+            <div id="daysBtns" class="flex flex-wrap gap-2">
+              <!-- 요청하신 기본 세팅값들 -->
+              <button class="btn btn-active" data-days="3">3일</button>
+              <button class="btn" data-days="7">7일</button>
+              <button class="btn" data-days="15">15일</button>
+              <button class="btn" data-days="30">30일</button>
+              <button class="btn" data-days="90">3개월</button>
+              <button class="btn" data-days="180">6개월</button>
+              <button class="btn" data-days="365">1년</button>
+            </div>
+          </div>
 
-<button onclick="analyze()">분석 실행</button>
-<button onclick="showAll()">전체 보기</button>
-<button onclick="showTop10()">참여율 상위 10%만 보기</button>
+          <div class="flex flex-wrap gap-2">
+            <button id="run" class="btn btn-primary">분석 실행</button>
+            <button id="reset" class="btn">전체 보기</button>
+          </div>
 
-<table id="resultTable">
-  <thead>
-    <tr>
-      <th>썸네일</th>
-      <th>키워드</th>
-      <th>제목</th>
-      <th>채널명 (구독자 수)</th>
-      <th>조회수</th>
-      <th>좋아요</th>
-      <th>댓글</th>
-      <th>참여율%</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
+          <div class="flex flex-wrap gap-2">
+            <button id="top10Eng" class="btn">참여율 상위 10% 보기</button>
+            <button id="top10ViewsPct" class="btn">조회수 상위 10% 보기</button>
+            <button id="top10ViewsAbs" class="btn">조회수 상위 10개 보기</button>
+          </div>
 
-<script>
-const API_KEY = "YOUR_API_KEY_HERE";  // AIzaSyAMCdmq2Hz6z5da1QbzYVMf7W5uTATM9vg
+          <div class="flex flex-wrap gap-2">
+            <button id="exportCsv" class="btn">CSV로 내보내기</button>
+          </div>
+        </div>
+      </div>
+    </section>
 
-let allResults = [];
+    <!-- 결과 테이블 -->
+    <section class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+      <table class="min-w-[980px] w-full border-collapse">
+        <thead>
+          <tr class="th">
+            <th class="p-3 text-left">썸네일</th>
+            <th class="p-3 text-left">키워드</th>
+            <th class="p-3 text-left">제목</th>
+            <th class="p-3 text-left">채널명 <span class="opacity-80">(구독자)</span></th>
+            <th class="p-3 text-right">조회수</th>
+            <th class="p-3 text-right">좋아요</th>
+            <th class="p-3 text-right">댓글</th>
+            <th class="p-3 text-right">참여율%</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+  </div>
 
-const fmt = (n) => (n == null ? "-" : Number(n).toLocaleString("ko-KR"));
-const pct = (n) => (n == null ? "-" : (Math.round(n * 100) / 100).toLocaleString("ko-KR"));
+  <script>
+    /* ====== 여기 API 키 한 번만 넣으면 끝! ====== */
+    const API_KEY = "AIzaSyAMCdmq2Hz6z5da1QbzYVMf7W5uTATM9vg"; // ← YouTube Data API v3 키
 
-function renderTable(rows) {
-  const tbody = document.querySelector("#resultTable tbody");
-  tbody.innerHTML = "";
-  for (const r of rows) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><a href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank">
-        <img src="${r.thumbnail}" /></a></td>
-      <td>${r.keyword}</td>
-      <td style="text-align:left;"><a href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank">${r.title}</a></td>
-      <td style="text-align:left;">${r.channelTitle} (${fmt(r.subscribers)})</td>
-      <td>${fmt(r.views)}</td>
-      <td>${fmt(r.likes)}</td>
-      <td>${fmt(r.comments)}</td>
-      <td>${pct(r.engagement)}</td>
-    `;
-    tbody.appendChild(tr);
-  }
-}
+    /* ====== 유틸 ====== */
+    const $ = (s)=>document.querySelector(s);
+    const $$ = (s)=>[...document.querySelectorAll(s)];
+    const fmt = (n)=>Number(n||0).toLocaleString("ko-KR");
+    const notice = $("#notice");
+    const tbody = $("#tbody");
 
-function showTop10() {
-  if (!allResults.length) return;
-  const sorted = [...allResults].sort((a,b) => b.engagement - a.engagement);
-  const top = Math.max(1, Math.floor(sorted.length * 0.1));
-  renderTable(sorted.slice(0, top));
-}
-
-function showAll() {
-  if (!allResults.length) return;
-  const sorted = [...allResults].sort((a,b) => b.engagement - a.engagement);
-  renderTable(sorted);
-}
-
-async function analyze() {
-  if (!API_KEY || API_KEY.includes("YOUR_API_KEY_HERE")) {
-    alert("API 키를 입력하세요.");
-    return;
-  }
-
-  allResults = [];
-  renderTable([]);
-
-  const keywords = document.getElementById("keywords").value.split("\n").map(s => s.trim()).filter(Boolean);
-  const days = parseInt(document.getElementById("days").value) || 7;
-  const publishedAfter = new Date(Date.now() - days * 86400000).toISOString();
-
-  for (const keyword of keywords) {
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(keyword)}&order=date&publishedAfter=${publishedAfter}&key=${API_KEY}`;
-    const searchData = await (await fetch(searchUrl)).json();
-    if (!searchData.items) continue;
-
-    const videoIds = searchData.items.map(i => i.id.videoId).join(",");
-    const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoIds}&key=${API_KEY}`;
-    const videosData = await (await fetch(videosUrl)).json();
-
-    const channelIds = [...new Set(videosData.items.map(v => v.snippet.channelId))];
-    const channelSubs = await fetchChannelSubs(channelIds);
-
-    for (const v of videosData.items) {
-      const s = v.statistics || {};
-      const views = Number(s.viewCount || 0);
-      const likes = Number(s.likeCount || 0);
-      const comments = Number(s.commentCount || 0);
-      const engagement = views ? ((likes + comments) / views) * 100 : 0;
-      allResults.push({
-        keyword,
-        videoId: v.id,
-        title: v.snippet.title,
-        thumbnail: v.snippet.thumbnails.medium.url,
-        channelTitle: v.snippet.channelTitle,
-        subscribers: channelSubs[v.snippet.channelId] || 0,
-        views, likes, comments, engagement
-      });
+    function setNotice(type, html){
+      notice.className = "mb-4 p-3 rounded-md text-sm";
+      if(type==="error"){ notice.classList.add("bg-red-50","text-red-700"); }
+      else { notice.classList.add("bg-blue-50","text-blue-700"); }
+      notice.innerHTML = html;
+      notice.classList.remove("hidden");
     }
-  }
-  showAll();
-}
+    function hideNotice(){ notice.classList.add("hidden"); }
 
-async function fetchChannelSubs(ids) {
-  const map = {};
-  for (let i = 0; i < ids.length; i += 50) {
-    const chunk = ids.slice(i, i + 50).join(",");
-    const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${chunk}&key=${API_KEY}`);
-    const data = await res.json();
-    for (const c of data.items || []) map[c.id] = Number(c.statistics.subscriberCount || 0);
-  }
-  return map;
-}
-</script>
+    function isoNDaysAgo(days){
+      const d=new Date(); d.setDate(d.getDate()-Number(days||7));
+      return d.toISOString();
+    }
+
+    function renderLoading(rows=8){
+      tbody.innerHTML = "";
+      for(let i=0;i<rows;i++){
+        tbody.insertAdjacentHTML("beforeend", `
+          <tr class="border-t">
+            <td class="p-3"><div class="skel w-[120px] h-[68px] rounded-md"></div></td>
+            <td class="p-3"><div class="skel w-16 h-5 rounded"></div></td>
+            <td class="p-3"><div class="skel w-72 h-5 rounded"></div></td>
+            <td class="p-3"><div class="skel w-56 h-5 rounded"></div></td>
+            <td class="p-3 text-right"><div class="skel w-16 h-5 rounded ml-auto"></div></td>
+            <td class="p-3 text-right"><div class="skel w-16 h-5 rounded ml-auto"></div></td>
+            <td class="p-3 text-right"><div class="skel w-16 h-5 rounded ml-auto"></div></td>
+            <td class="p-3 text-right"><div class="skel w-16 h-5 rounded ml-auto"></div></td>
+          </tr>`);
+      }
+    }
+
+    function rowHTML(v){
+      const subFmt = (n)=>{
+        const x=Number(n||0);
+        if(x>=1_000_000) return (x/1_000_000).toFixed(1)+"백만";
+        if(x>=10_000) return (x/10_000).toFixed(1)+"만";
+        return fmt(x);
+      };
+      return `
+        <tr class="border-t hover:bg-gray-50">
+          <td class="p-3">
+            <a href="${v.url}" target="_blank" rel="noopener">
+              <img src="${v.thumbnail}" class="w-[120px] h-[68px] object-cover rounded-md border" />
+            </a>
+          </td>
+          <td class="p-3 text-sm text-gray-700">${v.keyword}</td>
+          <td class="p-3">
+            <a href="${v.url}" target="_blank" class="text-sm font-medium text-blue-700 hover:underline">${v.title}</a>
+          </td>
+          <td class="p-3 text-sm">
+            <a href="${v.channelUrl}" target="_blank" class="hover:underline">${v.channelTitle}</a>
+            <span class="text-gray-400 ml-1">(구독자 <span class="num">${subFmt(v.subscribers)}</span>)</span>
+          </td>
+          <td class="p-3 text-right num">${fmt(v.views)}</td>
+          <td class="p-3 text-right num">${fmt(v.likes)}</td>
+          <td class="p-3 text-right num">${fmt(v.comments)}</td>
+          <td class="p-3 text-right num font-semibold">${v.engagement.toFixed(2)}</td>
+        </tr>
+      `;
+    }
+
+    function render(list){
+      tbody.innerHTML = list.length
+        ? list.map(rowHTML).join("")
+        : `<tr><td colspan="8" class="p-8 text-center text-gray-500">결과가 없습니다.</td></tr>`;
+    }
+
+    /* ====== YouTube API ====== */
+    async function yt(url){
+      const r = await fetch(url);
+      const j = await r.json();
+      if(!r.ok || j.error){
+        throw new Error(j?.error?.message || "YouTube API 오류");
+      }
+      return j;
+    }
+
+    async function searchByKeyword(q, publishedAfter, max=20){
+      const url = new URL("https://www.googleapis.com/youtube/v3/search");
+      url.search = new URLSearchParams({
+        key: API_KEY, part: "snippet",
+        q, type:"video", order:"viewCount",
+        maxResults:String(Math.min(max,50)),
+        publishedAfter
+      }).toString();
+      const data = await yt(url);
+      return (data.items||[]).map(i=>i.id?.videoId).filter(Boolean);
+    }
+
+    async function fetchVideosStats(ids){
+      if(!ids.length) return [];
+      const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+      url.search = new URLSearchParams({
+        key: API_KEY, part:"snippet,statistics", id: ids.join(",")
+      }).toString();
+      const data = await yt(url);
+      return data.items||[];
+    }
+
+    async function fetchChannelsSubs(ids){
+      if(!ids.length) return {};
+      const url = new URL("https://www.googleapis.com/youtube/v3/channels");
+      url.search = new URLSearchParams({
+        key: API_KEY, part:"statistics", id: ids.join(",")
+      }).toString();
+      const data = await yt(url);
+      const map = {};
+      (data.items||[]).forEach(c=>{
+        map[c.id] = Number(c.statistics?.subscriberCount||0);
+      });
+      return map;
+    }
+
+    /* ====== 메인 분석 ====== */
+    let ALL = [];      // 전체 결과
+    let CURRENT = [];  // 현재 화면에 보이는 결과
+
+    async function analyze(days){
+      try{
+        if(!API_KEY || API_KEY.includes("여기에_")){
+          setNotice("error","❗ API 키가 설정되지 않았습니다. index.html 상단의 <b>API_KEY</b> 값을 본인 키로 교체하세요.");
+          render([]);
+          return;
+        }
+        hideNotice();
+        renderLoading();
+
+        const publishedAfter = isoNDaysAgo(days);
+        const keywords = $("#keywords").value.split("\n").map(s=>s.trim()).filter(Boolean);
+        let combined = [];
+
+        for(const kw of keywords){
+          // 1) 검색 → 영상 ID 수집
+          const ids = await searchByKeyword(kw, publishedAfter, 20);
+          if(!ids.length) continue;
+
+          // 2) 비디오 통계
+          const videos = await fetchVideosStats(ids);
+
+          // 3) 채널 구독자 수 매핑
+          const channelIds = [...new Set(videos.map(v=>v.snippet?.channelId).filter(Boolean))];
+          const subsMap = await fetchChannelsSubs(channelIds);
+
+          const items = videos.map(v=>{
+            const s = v.statistics||{};
+            const views = Number(s.viewCount||0);
+            const likes = Number(s.likeCount||0);
+            const comments = Number(s.commentCount||0);
+            const engagement = views ? ((likes+comments)/views)*100 : 0;
+
+            return {
+              keyword: kw,
+              title: v.snippet?.title||"",
+              url: `https://www.youtube.com/watch?v=${v.id}`,
+              thumbnail: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.high?.url || "",
+              channelTitle: v.snippet?.channelTitle||"",
+              channelUrl: v.snippet?.channelId ? `https://www.youtube.com/channel/${v.snippet.channelId}` : "#",
+              subscribers: subsMap[v.snippet?.channelId]||0,
+              views, likes, comments, engagement
+            };
+          });
+
+          combined.push(...items);
+        }
+
+        // 기본 정렬: 조회수 내림차순
+        combined.sort((a,b)=>b.views-a.views);
+
+        ALL = combined;
+        CURRENT = [...ALL];
+        render(CURRENT);
+        setNotice("info", `✅ 총 <b>${fmt(CURRENT.length)}</b>개 영상 분석 완료 · 기간: <b>${days}일</b>`);
+      }catch(err){
+        console.error(err);
+        render([]);
+        setNotice("error", `❗ ${err.message}`);
+      }
+    }
+
+    /* ====== 필터/액션 ====== */
+    function showAll(){ CURRENT = [...ALL]; render(CURRENT); }
+
+    function top10Engagement(){
+      if(!ALL.length) return;
+      const sorted = [...ALL].sort((a,b)=>b.engagement-a.engagement);
+      const cut = Math.max(1, Math.floor(sorted.length*0.1));
+      CURRENT = sorted.slice(0, cut);
+      render(CURRENT);
+      setNotice("info", `🎯 참여율 상위 10% (총 ${fmt(CURRENT.length)}개)`);
+    }
+
+    function top10ViewsPercent(){
+      if(!ALL.length) return;
+      const sorted = [...ALL].sort((a,b)=>b.views-a.views);
+      const cut = Math.max(1, Math.floor(sorted.length*0.1));
+      CURRENT = sorted.slice(0, cut);
+      render(CURRENT);
+      setNotice("info", `🎯 조회수 상위 10% (총 ${fmt(CURRENT.length)}개)`);
+    }
+
+    function top10ViewsAbsolute(){
+      if(!ALL.length) return;
+      const sorted = [...ALL].sort((a,b)=>b.views-a.views);
+      CURRENT = sorted.slice(0, 10);
+      render(CURRENT);
+      setNotice("info", `🎯 조회수 상위 10개`);
+    }
+
+    function exportCSV(){
+      const rows = [
+        ["키워드","제목","채널명","구독자","조회수","좋아요","댓글","참여율(%)","영상URL"]
+      ];
+      CURRENT.forEach(v=>{
+        rows.push([
+          v.keyword,
+          v.title.replace(/"/g,'""'),
+          v.channelTitle.replace(/"/g,'""'),
+          v.subscribers,
+          v.views,
+          v.likes,
+          v.comments,
+          v.engagement.toFixed(2),
+          v.url
+        ]);
+      });
+
+      const csv = rows.map(r => r.map(x => `"${x}"`).join(",")).join("\r\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `youtube_analysis_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    }
+
+    /* ====== 이벤트 바인딩 & 초기 실행 ====== */
+    let CURRENT_DAYS = 3; // 초기 기본: 3일 (요청하신 프리셋)
+    $("#run").addEventListener("click", ()=> analyze(CURRENT_DAYS));
+    $("#reset").addEventListener("click", showAll);
+    $("#top10Eng").addEventListener("click", top10Engagement);
+    $("#top10ViewsPct").addEventListener("click", top10ViewsPercent);
+    $("#top10ViewsAbs").addEventListener("click", top10ViewsAbsolute);
+    $("#exportCsv").addEventListener("click", exportCSV);
+
+    $("#daysBtns").addEventListener("click", (e)=>{
+      const btn = e.target.closest("button[data-days]");
+      if(!btn) return;
+      $$("#daysBtns button").forEach(b=>b.classList.remove("btn-active"));
+      btn.classList.add("btn-active");
+      CURRENT_DAYS = Number(btn.dataset.days);
+      analyze(CURRENT_DAYS);
+    });
+
+    // 페이지 로드 시 자동 실행
+    window.addEventListener("load", ()=> analyze(CURRENT_DAYS));
+  </script>
 </body>
 </html>
