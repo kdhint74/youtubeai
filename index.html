@@ -1,109 +1,123 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>YouTube 참여율 분석기</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-    th { background-color: #0073e6; color: white; }
-    button { margin: 5px; padding: 10px 15px; border: none; background: #0073e6; color: white; border-radius: 5px; cursor: pointer; }
-    button:hover { background: #005bb5; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>YouTube 참여율 분석기</title>
+<style>
+  body { font-family: "맑은 고딕", sans-serif; background-color: #f7f7f7; padding: 30px; }
+  h1 { color: #222; margin-bottom: 10px; }
+  textarea, input { width: 100%; max-width: 400px; padding: 8px; margin-bottom: 10px; }
+  button { background-color: #007bff; color: white; border: none; padding: 8px 14px; cursor: pointer; border-radius: 5px; }
+  button:hover { background-color: #0056b3; }
+  table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+  th { background-color: #007bff; color: white; }
+  img { width: 120px; height: auto; border-radius: 4px; }
+</style>
 </head>
 <body>
 
-  <h2>📊 YouTube 참여율 분석기</h2>
+<h1>📊 YouTube 참여율 분석기</h1>
 
-  <label>키워드 (줄바꿈 구분):</label><br />
-  <textarea id="keywords" rows="4" cols="50">건강정보
-트럼프 관세</textarea><br><br>
+<label>키워드 (줄바꿈 구분):</label><br />
+<textarea id="keywords" rows="3" placeholder="예: 건강정보&#10;트럼프 관세"></textarea><br />
 
-  <label>기간(일):</label>
-  <input type="number" id="days" value="7" style="width:80px" /><br><br>
+<label>기간(일):</label><br />
+<input type="number" id="days" value="7" /><br />
 
-  <button onclick="analyze()">분석 실행</button>
-  <button onclick="showAll()">전체 보기</button>
-  <button onclick="showTop10()">참여율 상위 10%만 보기</button>
+<button onclick="analyze()">분석 실행</button>
+<button onclick="showAll()">전체 보기</button>
+<button onclick="showTop10()">참여율 상위 10%만 보기</button>
 
-  <table id="resultTable">
-    <thead>
-      <tr>
-        <th>썸네일</th>
-        <th>키워드</th>
-        <th>제목</th>
-        <th>채널명 (구독자 수)</th>
-        <th>조회수</th>
-        <th>좋아요</th>
-        <th>댓글</th>
-        <th>참여율%</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<table id="resultTable">
+  <thead>
+    <tr>
+      <th>썸네일</th>
+      <th>키워드</th>
+      <th>제목</th>
+      <th>채널명 (구독자 수)</th>
+      <th>조회수</th>
+      <th>좋아요</th>
+      <th>댓글</th>
+      <th>참여율%</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
-  <script>
-    // ✅ 여기 API 키를 입력하세요 (고정)
-    const apiKey = "AIzaSyXXXXXXX_대표님_API_키_여기에_붙여넣기";
+<script>
+// ✅ YouTube API 키 고정 (대표님 키로 교체)
+const API_KEY = "여기에_대표님_API_KEY_붙여넣기";
 
-    async function analyze() {
-      const keywords = document.getElementById("keywords").value.trim().split("\n");
-      const days = parseInt(document.getElementById("days").value);
-      const tbody = document.querySelector("#resultTable tbody");
-      tbody.innerHTML = "";
+// 결과 전역 변수
+let allResults = [];
 
-      for (const keyword of keywords) {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(keyword)}&key=${apiKey}`;
-        const searchRes = await fetch(searchUrl);
-        const searchData = await searchRes.json();
+// 분석 실행
+async function analyze() {
+  const keywords = document.getElementById("keywords").value.trim().split("\n");
+  const days = parseInt(document.getElementById("days").value.trim()) || 7;
+  const tableBody = document.querySelector("#resultTable tbody");
+  tableBody.innerHTML = "";
 
-        for (const item of searchData.items || []) {
-          const videoId = item.id.videoId;
-          const title = item.snippet.title;
-          const thumbnail = item.snippet.thumbnails.default.url;
-          const channel = item.snippet.channelTitle;
+  for (const keyword of keywords) {
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(keyword)}&key=${API_KEY}`;
+    const searchRes = await fetch(searchUrl);
+    const searchData = await searchRes.json();
 
-          const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoId}&key=${apiKey}`;
-          const statsRes = await fetch(statsUrl);
-          const statsData = await statsRes.json();
+    if (!searchData.items) continue;
 
-          if (statsData.items.length > 0) {
-            const stats = statsData.items[0].statistics;
-            const views = parseInt(stats.viewCount || 0);
-            const likes = parseInt(stats.likeCount || 0);
-            const comments = parseInt(stats.commentCount || 0);
-            const engagement = ((likes + comments) / views * 100).toFixed(2);
+    for (const item of searchData.items) {
+      const videoId = item.id.videoId;
+      const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoId}&key=${API_KEY}`;
+      const statsRes = await fetch(statsUrl);
+      const statsData = await statsRes.json();
 
-            const row = `<tr>
-              <td><img src="${thumbnail}" width="100"></td>
-              <td>${keyword}</td>
-              <td>${title}</td>
-              <td>${channel}</td>
-              <td>${views.toLocaleString()}</td>
-              <td>${likes.toLocaleString()}</td>
-              <td>${comments.toLocaleString()}</td>
-              <td>${engagement}%</td>
-            </tr>`;
-            tbody.insertAdjacentHTML("beforeend", row);
-          }
-        }
-      }
+      if (!statsData.items?.length) continue;
+
+      const vid = statsData.items[0];
+      const title = vid.snippet.title;
+      const channel = vid.snippet.channelTitle;
+      const views = parseInt(vid.statistics.viewCount || 0);
+      const likes = parseInt(vid.statistics.likeCount || 0);
+      const comments = parseInt(vid.statistics.commentCount || 0);
+      const participation = views > 0 ? (((likes + comments) / views) * 100).toFixed(2) : 0;
+
+      allResults.push({ keyword, title, channel, views, likes, comments, participation, thumb: item.snippet.thumbnails.medium.url });
     }
+  }
 
-    function showAll() {
-      const rows = document.querySelectorAll("#resultTable tbody tr");
-      rows.forEach(row => row.style.display = "");
-    }
+  renderTable(allResults);
+}
 
-    function showTop10() {
-      const rows = Array.from(document.querySelectorAll("#resultTable tbody tr"));
-      const sorted = rows.sort((a, b) => parseFloat(b.cells[7].innerText) - parseFloat(a.cells[7].innerText));
-      const top10 = sorted.slice(0, Math.ceil(rows.length * 0.1));
-      rows.forEach(row => row.style.display = "none");
-      top10.forEach(row => row.style.display = "");
-    }
-  </script>
+function renderTable(data) {
+  const tbody = document.querySelector("#resultTable tbody");
+  tbody.innerHTML = "";
+  for (const row of data) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><img src="${row.thumb}" /></td>
+      <td>${row.keyword}</td>
+      <td>${row.title}</td>
+      <td>${row.channel}</td>
+      <td>${row.views.toLocaleString()}</td>
+      <td>${row.likes.toLocaleString()}</td>
+      <td>${row.comments.toLocaleString()}</td>
+      <td>${row.participation}%</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function showAll() {
+  renderTable(allResults);
+}
+
+function showTop10() {
+  const sorted = [...allResults].sort((a,b)=>b.participation - a.participation);
+  const top = sorted.slice(0, Math.ceil(allResults.length * 0.1));
+  renderTable(top);
+}
+</script>
+
 </body>
 </html>
