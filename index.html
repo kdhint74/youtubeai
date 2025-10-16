@@ -47,77 +47,101 @@
 </table>
 
 <script>
-// ✅ YouTube API 키 고정 (대표님 키로 교체)
-const API_KEY = "여기에_대표님_API_KEY_붙여넣기";
+const API_KEY = "YOUR_API_KEY_HERE";  // AIzaSyAMCdmq2Hz6z5da1QbzYVMf7W5uTATM9vg
 
-// 결과 전역 변수
 let allResults = [];
 
-// 분석 실행
-async function analyze() {
-  const keywords = document.getElementById("keywords").value.trim().split("\n");
-  const days = parseInt(document.getElementById("days").value.trim()) || 7;
-  const tableBody = document.querySelector("#resultTable tbody");
-  tableBody.innerHTML = "";
+const fmt = (n) => (n == null ? "-" : Number(n).toLocaleString("ko-KR"));
+const pct = (n) => (n == null ? "-" : (Math.round(n * 100) / 100).toLocaleString("ko-KR"));
 
-  for (const keyword of keywords) {
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(keyword)}&key=${API_KEY}`;
-    const searchRes = await fetch(searchUrl);
-    const searchData = await searchRes.json();
-
-    if (!searchData.items) continue;
-
-    for (const item of searchData.items) {
-      const videoId = item.id.videoId;
-      const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoId}&key=${API_KEY}`;
-      const statsRes = await fetch(statsUrl);
-      const statsData = await statsRes.json();
-
-      if (!statsData.items?.length) continue;
-
-      const vid = statsData.items[0];
-      const title = vid.snippet.title;
-      const channel = vid.snippet.channelTitle;
-      const views = parseInt(vid.statistics.viewCount || 0);
-      const likes = parseInt(vid.statistics.likeCount || 0);
-      const comments = parseInt(vid.statistics.commentCount || 0);
-      const participation = views > 0 ? (((likes + comments) / views) * 100).toFixed(2) : 0;
-
-      allResults.push({ keyword, title, channel, views, likes, comments, participation, thumb: item.snippet.thumbnails.medium.url });
-    }
-  }
-
-  renderTable(allResults);
-}
-
-function renderTable(data) {
+function renderTable(rows) {
   const tbody = document.querySelector("#resultTable tbody");
   tbody.innerHTML = "";
-  for (const row of data) {
+  for (const r of rows) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><img src="${row.thumb}" /></td>
-      <td>${row.keyword}</td>
-      <td>${row.title}</td>
-      <td>${row.channel}</td>
-      <td>${row.views.toLocaleString()}</td>
-      <td>${row.likes.toLocaleString()}</td>
-      <td>${row.comments.toLocaleString()}</td>
-      <td>${row.participation}%</td>`;
+      <td><a href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank">
+        <img src="${r.thumbnail}" /></a></td>
+      <td>${r.keyword}</td>
+      <td style="text-align:left;"><a href="https://www.youtube.com/watch?v=${r.videoId}" target="_blank">${r.title}</a></td>
+      <td style="text-align:left;">${r.channelTitle} (${fmt(r.subscribers)})</td>
+      <td>${fmt(r.views)}</td>
+      <td>${fmt(r.likes)}</td>
+      <td>${fmt(r.comments)}</td>
+      <td>${pct(r.engagement)}</td>
+    `;
     tbody.appendChild(tr);
   }
 }
 
-function showAll() {
-  renderTable(allResults);
+function showTop10() {
+  if (!allResults.length) return;
+  const sorted = [...allResults].sort((a,b) => b.engagement - a.engagement);
+  const top = Math.max(1, Math.floor(sorted.length * 0.1));
+  renderTable(sorted.slice(0, top));
 }
 
-function showTop10() {
-  const sorted = [...allResults].sort((a,b)=>b.participation - a.participation);
-  const top = sorted.slice(0, Math.ceil(allResults.length * 0.1));
-  renderTable(top);
+function showAll() {
+  if (!allResults.length) return;
+  const sorted = [...allResults].sort((a,b) => b.engagement - a.engagement);
+  renderTable(sorted);
+}
+
+async function analyze() {
+  if (!API_KEY || API_KEY.includes("YOUR_API_KEY_HERE")) {
+    alert("API 키를 입력하세요.");
+    return;
+  }
+
+  allResults = [];
+  renderTable([]);
+
+  const keywords = document.getElementById("keywords").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const days = parseInt(document.getElementById("days").value) || 7;
+  const publishedAfter = new Date(Date.now() - days * 86400000).toISOString();
+
+  for (const keyword of keywords) {
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&q=${encodeURIComponent(keyword)}&order=date&publishedAfter=${publishedAfter}&key=${API_KEY}`;
+    const searchData = await (await fetch(searchUrl)).json();
+    if (!searchData.items) continue;
+
+    const videoIds = searchData.items.map(i => i.id.videoId).join(",");
+    const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoIds}&key=${API_KEY}`;
+    const videosData = await (await fetch(videosUrl)).json();
+
+    const channelIds = [...new Set(videosData.items.map(v => v.snippet.channelId))];
+    const channelSubs = await fetchChannelSubs(channelIds);
+
+    for (const v of videosData.items) {
+      const s = v.statistics || {};
+      const views = Number(s.viewCount || 0);
+      const likes = Number(s.likeCount || 0);
+      const comments = Number(s.commentCount || 0);
+      const engagement = views ? ((likes + comments) / views) * 100 : 0;
+      allResults.push({
+        keyword,
+        videoId: v.id,
+        title: v.snippet.title,
+        thumbnail: v.snippet.thumbnails.medium.url,
+        channelTitle: v.snippet.channelTitle,
+        subscribers: channelSubs[v.snippet.channelId] || 0,
+        views, likes, comments, engagement
+      });
+    }
+  }
+  showAll();
+}
+
+async function fetchChannelSubs(ids) {
+  const map = {};
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50).join(",");
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${chunk}&key=${API_KEY}`);
+    const data = await res.json();
+    for (const c of data.items || []) map[c.id] = Number(c.statistics.subscriberCount || 0);
+  }
+  return map;
 }
 </script>
-
 </body>
 </html>
