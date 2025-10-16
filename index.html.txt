@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube 참여율·조회수 분석기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+
+<body class="bg-gray-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    function App() {
+      const [apiKey, setApiKey] = useState("");
+      const [keywords, setKeywords] = useState("");
+      const [days, setDays] = useState(7);
+      const [videos, setVideos] = useState([]);
+      const [filtered, setFiltered] = useState([]);
+
+      const fetchVideos = async () => {
+        if (!apiKey || !keywords) {
+          alert("API 키와 키워드를 입력하세요!");
+          return;
+        }
+
+        const allResults = [];
+        const keywordList = keywords.split("\n").map(k => k.trim()).filter(k => k);
+
+        for (const keyword of keywordList) {
+          const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&order=viewCount&publishedAfter=${new Date(Date.now() - days * 86400000).toISOString()}&maxResults=10&key=${apiKey}`;
+          const res = await fetch(url);
+          const data = await res.json();
+
+          if (data.items) {
+            for (const item of data.items) {
+              const videoId = item.id.videoId;
+              const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoId}&key=${apiKey}`;
+              const dRes = await fetch(detailsUrl);
+              const dData = await dRes.json();
+              if (dData.items && dData.items[0]) {
+                const v = dData.items[0];
+                const stats = v.statistics || {};
+                allResults.push({
+                  keyword,
+                  title: v.snippet.title,
+                  channel: v.snippet.channelTitle,
+                  channelSubs: stats.subscriberCount ? Number(stats.subscriberCount) : null,
+                  views: Number(stats.viewCount || 0),
+                  likes: Number(stats.likeCount || 0),
+                  comments: Number(stats.commentCount || 0),
+                  thumbnail: v.snippet.thumbnails.medium.url,
+                  engagement:
+                    ((Number(stats.likeCount || 0) + Number(stats.commentCount || 0)) /
+                      Number(stats.viewCount || 1)) * 100,
+                });
+              }
+            }
+          }
+        }
+        setVideos(allResults);
+        setFiltered(allResults);
+      };
+
+      const showTop10 = () => {
+        const top10 = videos
+          .sort((a, b) => b.engagement - a.engagement)
+          .slice(0, Math.ceil(videos.length * 0.1));
+        setFiltered(top10);
+      };
+
+      const showTopViews = () => {
+        const top10 = videos
+          .sort((a, b) => b.views - a.views)
+          .slice(0, Math.ceil(videos.length * 0.1));
+        setFiltered(top10);
+      };
+
+      return (
+        <div className="p-6 max-w-7xl mx-auto">
+          <h1 className="text-2xl font-bold mb-4">🎯 YouTube 참여율·조회수 분석기</h1>
+
+          <div className="flex flex-wrap gap-4 mb-6">
+            <input
+              className="border p-2 flex-1 min-w-[250px]"
+              placeholder="YouTube API 키 입력"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+            />
+            <textarea
+              className="border p-2 flex-1 min-w-[250px]"
+              rows="3"
+              placeholder="키워드 입력 (줄바꿈으로 구분)"
+              value={keywords}
+              onChange={e => setKeywords(e.target.value)}
+            />
+            <div>
+              <p className="mb-1 font-semibold">기간 선택</p>
+              {[3, 7, 10, 180].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setDays(d)}
+                  className={`px-3 py-1 border mr-1 rounded ${days === d ? "bg-blue-500 text-white" : ""}`}
+                >
+                  {d === 180 ? "6개월" : `${d}일`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2 mb-6">
+            <button onClick={fetchVideos} className="bg-blue-500 text-white px-4 py-2 rounded">
+              분석 실행
+            </button>
+            <button onClick={showTop10} className="bg-green-500 text-white px-4 py-2 rounded">
+              참여율 상위 10% 보기
+            </button>
+            <button onClick={showTopViews} className="bg-purple-500 text-white px-4 py-2 rounded">
+              조회수 상위 10% 보기
+            </button>
+          </div>
+
+          <table className="w-full border text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border p-2">썸네일</th>
+                <th className="border p-2">키워드</th>
+                <th className="border p-2">제목</th>
+                <th className="border p-2">채널명 (구독자)</th>
+                <th className="border p-2">조회수</th>
+                <th className="border p-2">좋아요</th>
+                <th className="border p-2">댓글</th>
+                <th className="border p-2">참여율%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((v, i) => (
+                <tr key={i} className="text-center border-t">
+                  <td className="p-2">
+                    <img src={v.thumbnail} className="w-24 mx-auto rounded" />
+                  </td>
+                  <td className="p-2">{v.keyword}</td>
+                  <td className="p-2 text-left">{v.title}</td>
+                  <td className="p-2">
+                    {v.channel}
+                    {v.channelSubs ? ` (${v.channelSubs.toLocaleString()}명)` : ""}
+                  </td>
+                  <td className="p-2">{v.views.toLocaleString()}</td>
+                  <td className="p-2">{v.likes.toLocaleString()}</td>
+                  <td className="p-2">{v.comments.toLocaleString()}</td>
+                  <td className="p-2 font-bold">{v.engagement.toFixed(2)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
